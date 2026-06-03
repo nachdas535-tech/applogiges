@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import ConfettiBurst from "./ConfettiBurst";
 import {
   SECRET_CODE,
@@ -12,17 +12,22 @@ import {
 import FloatingHearts from "./FloatingHearts";
 import ProgressIndicator from "./ProgressIndicator";
 import RomanticButton from "./RomanticButton";
+import LetterTransition from "./transitions/LetterTransition";
+import LoveTransition from "./transitions/LoveTransition";
+import MemoriesTransition from "./transitions/MemoriesTransition";
+import SorryTransition from "./transitions/SorryTransition";
 import TypewriterText from "./TypewriterText";
 import type { StepId } from "./types";
 
 const pageMotion = {
-  initial: { opacity: 0, y: 22, scale: 0.98 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0, y: -18, scale: 0.98 },
+  initial: { clipPath: "inset(0 48% 0 48% round 28px)", filter: "blur(14px)", scale: 0.96 },
+  animate: { clipPath: "inset(0 0% 0 0% round 28px)", filter: "blur(0px)", scale: 1 },
+  exit: { clipPath: "inset(48% 0 48% 0 round 28px)", filter: "blur(10px)", scale: 0.98 },
 };
 
 const normalizeAnswer = (value: string) => value.trim().toLowerCase();
 const CODE_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "back"];
+const stepOrder: StepId[] = ["code", "quiz", "video", "letter", "final"];
 
 export default function BirthdayExperience() {
   const [step, setStep] = useState<StepId>("code");
@@ -34,6 +39,9 @@ export default function BirthdayExperience() {
   const [quizFeedback, setQuizFeedback] = useState("");
   const [hasSubmittedAnswer, setHasSubmittedAnswer] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [activeTransition, setActiveTransition] = useState<StepId | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [unlockedStepIndex, setUnlockedStepIndex] = useState(0);
 
   const currentMemory = quizMemories[quizIndex];
   const isLastMemory = quizIndex === quizMemories.length - 1;
@@ -56,13 +64,34 @@ export default function BirthdayExperience() {
     return () => window.clearTimeout(timer);
   }, [showConfetti]);
 
+  const completeTransition = useCallback(() => {
+    setIsTransitioning(false);
+    setActiveTransition(null);
+  }, []);
+
+  function openStep(nextStep: StepId) {
+    const nextIndex = stepOrder.indexOf(nextStep);
+
+    setStep(nextStep);
+    setUnlockedStepIndex((value) => Math.max(value, nextIndex));
+
+    if (nextStep === "code") {
+      setActiveTransition(null);
+      setIsTransitioning(false);
+      return;
+    }
+
+    setActiveTransition(nextStep);
+    setIsTransitioning(true);
+  }
+
   function submitCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setCodeAttempts((value) => value + 1);
     if (code === SECRET_CODE) {
       setCodeError("");
       setCodeAttempts(0);
-      setStep("quiz");
+      openStep("quiz");
       return;
     }
 
@@ -105,7 +134,7 @@ export default function BirthdayExperience() {
 
     if (isLastMemory) {
       setShowConfetti(true);
-      setStep("video");
+      openStep("video");
       return;
     }
 
@@ -121,16 +150,38 @@ export default function BirthdayExperience() {
   }
 
   return (
-    <main className="romantic-bg relative min-h-dvh overflow-hidden px-4 py-20 text-purple-950 sm:px-6">
+    <main className="romantic-bg relative min-h-dvh snap-y snap-mandatory overflow-hidden px-3 py-20 text-purple-950 sm:px-6">
       <FloatingHearts />
       {showConfetti ? <ConfettiBurst /> : null}
       <ProgressIndicator
         currentStep={step}
         quizIndex={quizIndex}
         quizTotal={quizMemories.length}
+        unlockedStepIndex={unlockedStepIndex}
+        isTransitioning={isTransitioning}
+        onSelectStep={openStep}
       />
+      {activeTransition === "quiz" ? (
+        <MemoriesTransition
+          onComplete={completeTransition}
+          photos={quizMemories.map((memory) => memory.image)}
+        />
+      ) : null}
+      {activeTransition === "video" ? (
+        <SorryTransition onComplete={completeTransition} />
+      ) : null}
+      {activeTransition === "letter" ? (
+        <LetterTransition onComplete={completeTransition} />
+      ) : null}
+      {activeTransition === "final" ? (
+        <LoveTransition onComplete={completeTransition} />
+      ) : null}
 
-      <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-10rem)] w-full max-w-4xl items-center justify-center">
+      <div
+        className={`relative z-10 mx-auto flex min-h-[calc(100dvh-10rem)] w-full max-w-4xl snap-center items-center justify-center transition-[visibility] ${
+          isTransitioning ? "invisible" : "visible"
+        }`}
+      >
         <AnimatePresence mode="wait">
           {step === "code" ? (
             <motion.section
@@ -352,7 +403,7 @@ export default function BirthdayExperience() {
                 src="/apology.mp4"
               />
               <div className="mt-6 flex justify-center">
-                <RomanticButton onClick={() => setStep("letter")}>
+                <RomanticButton onClick={() => openStep("letter")}>
                   Read my letter
                 </RomanticButton>
               </div>
@@ -379,7 +430,7 @@ export default function BirthdayExperience() {
                   <TypewriterText text={birthdayLetter} />
                 </div>
                 <div className="mt-6 flex justify-center">
-                  <RomanticButton onClick={() => setStep("final")}>
+                  <RomanticButton onClick={() => openStep("final")}>
                     One last thing
                   </RomanticButton>
                 </div>

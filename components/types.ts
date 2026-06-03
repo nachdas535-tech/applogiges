@@ -24,3 +24,8 @@ export interface ConfettiPiece {
   color: string;
   rotate: number;
 }
+
+export interface CinematicTransitionProps {
+  onComplete: () => void;
+  photos?: string[];
+}
